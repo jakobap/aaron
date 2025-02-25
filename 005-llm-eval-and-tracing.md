@@ -1,7 +1,5 @@
 # Challenge 5: LLM Evaluation & Tracing - "The Quality Guardian" 🔍
 
-> ⚠️ **Note:** This challenge is currently under development. While you can configure tracing and explore the Langfuse interface, the full implementation details will be coming soon. Stay tuned for updates!
-
 ## Introduction
 
 As your RAG system grows more complex, understanding what's happening under the hood becomes crucial. In this challenge, you'll implement LLM observability and evaluation using [Langfuse](https://langfuse.com/docs/get-started), an open-source LLM engineering platform.
