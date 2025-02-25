@@ -1,7 +1,5 @@
 # Challenge 4: Advanced RAG - "The Email Alchemist" 📧
 
-> ⚠️ **Note:** This challenge is currently under development. While you can review the codebase and understand the concepts, the full implementation is not yet available. Stay tuned for updates!
-
 ## Introduction
 
 Welcome to the most complex challenge yet! As "The Email Alchemist", you'll transform a simple RAG system into a sophisticated multi-step pipeline using LangChain. Your mission is to build an AI assistant that can:
