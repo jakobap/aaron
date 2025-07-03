@@ -1,6 +1,9 @@
 ---
+model: vertexai/gemini-2.5-pro
 config:
   temperature: 0.1
+  thinkingConfig:
+    thinkingBudget: 1500
 input:
   schema:
     question: string
