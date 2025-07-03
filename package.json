@@ -9,9 +9,10 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@genkit-ai/firebase": "^1.7.0",
-    "@genkit-ai/googleai": "^1.7.0",
-    "@genkit-ai/vertexai": "^1.7.0",
+    "@genkit-ai/firebase": "^1.14.0",
+    "@genkit-ai/googleai": "^1.14.0",
+    "@genkit-ai/vertexai": "^1.14.0",
+    "genkit": "^1.14.0",
     "@google-cloud/aiplatform": "^3.33.0",
     "@google-cloud/firestore": "^7.11.0",
     "@google-cloud/vertexai": "^1.9.0",
@@ -21,23 +22,18 @@
     "cheerio": "^1.0.0",
     "firebase": "^11.0.2",
     "firebase-admin": "^13.0.0",
-    "fs": "^0.0.1-security",
-    "genkit": "^1.7.0",
-    "genkit-cli": "^1.7.0",
     "lucide-react": "^0.460.0",
-    "net": "^1.0.2",
     "next": "^15.3.1",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "tls": "^0.0.1",
-    "webpack": "^5.99.7"
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
     "@types/node": "^20",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
     "eslint": "^8",
-    "eslint-config-next": "15.0.2",
+    "eslint-config-next": "^15.3.1",
+    "genkit-cli": "^1.14.0",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
     "typescript": "^5"
