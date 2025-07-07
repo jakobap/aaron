@@ -20,6 +20,13 @@ interface SearchResultItem {
     displayLink?: string;
 }
 
+interface GoogleSearchResponse {
+    items?: SearchResultItem[];
+    error?: {
+        message: string;
+    };
+}
+
 interface CleanedSearchResultItem {
     cleanedHtmlContent: string;
     link: string;
@@ -47,7 +54,7 @@ export async function createCustomSearchRetriever(ai: Genkit) {
             try {
                 // Make request to Google Custom Search API
                 const response = await fetch(searchUrl);
-                const data = await response.json();
+                const data = (await response.json()) as GoogleSearchResponse;
 
                 if (!response.ok) {
                     console.error('Google Search API error:', data);
@@ -59,39 +66,39 @@ export async function createCustomSearchRetriever(ai: Genkit) {
                 const topKResults = results.slice(0, options.k); // Slice here before fetching content
 
                 // Fetch content for each result
-                const cleanedResults: CleanedSearchResultItem[] = await Promise.all(
-                    topKResults.map(async (item: SearchResultItem, index: number) => {
-                        let cleanedHtmlContent = '';
+                const cleanedResults: CleanedSearchResultItem[] = (
+                    await Promise.all(
+                        topKResults.map(async (item: SearchResultItem) => {
+                            if (!item.link) {
+                                return null;
+                            }
 
-                        if (item.link) {
+                            let cleanedHtmlContent = '';
                             try {
                                 console.log(`Fetching content from: ${item.link}`);
                                 const scraperResult = await scrapeUrlAction(item.link);
                                 cleanedHtmlContent = scraperResult.cleanHTML;
-
                             } catch (error) {
                                 console.error(`Error fetching content from ${item.link}:`, error);
                             }
-                        }
 
-                        return {
-                            ...item,
-                            cleanedHtmlContent: cleanedHtmlContent || '',
-                        };
-                    })
-                );
+                            return {
+                                ...item,
+                                link: item.link,
+                                cleanedHtmlContent: cleanedHtmlContent || '',
+                            };
+                        })
+                    )
+                ).filter((result): result is CleanedSearchResultItem => result !== null);
 
                 const resultDocs: Document[] = cleanedResults.map(item => {
                     const content = item.cleanedHtmlContent || item.snippet || item.title || 'Content unavailable';
-                    return Document.fromText(
-                        content,
-                        {
-                            title: item.title,
-                            snippet: item.snippet,
-                            link: item.link,
-                            displayLink: item.displayLink,
-                        }
-                    );
+                    return Document.fromText(content, {
+                        title: item.title,
+                        snippet: item.snippet,
+                        link: item.link,
+                        displayLink: item.displayLink,
+                    });
                 });
 
                 // Return the top K results based on options
