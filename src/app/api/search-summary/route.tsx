@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { simpleSearchFlow } from '@/lib/genkit/flows/simpleSearchFlow';
 import { researchFlow } from '@/lib/genkit/flows/researchFlow';
+import { researchAgentFlow } from '@/lib/genkit/flows/researchAgentFlow';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,9 +14,9 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    const { summary, docs } = await simpleSearchFlow(query);
-
+    // const { summary, docs } = await simpleSearchFlow(query);
     // const { summary, docs } = await researchFlow(query);
+    const { summary, docs } = await researchAgentFlow(query);
 
     return NextResponse.json({
       summary: summary,
