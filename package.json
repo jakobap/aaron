@@ -9,10 +9,10 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@genkit-ai/evaluator": "^1.14.0",
     "@genkit-ai/firebase": "^1.14.0",
     "@genkit-ai/googleai": "^1.14.0",
     "@genkit-ai/vertexai": "^1.14.0",
-    "genkit": "^1.14.0",
     "@google-cloud/aiplatform": "^3.33.0",
     "@google-cloud/firestore": "^7.11.0",
     "@google-cloud/vertexai": "^1.9.0",
@@ -22,10 +22,12 @@
     "cheerio": "^1.0.0",
     "firebase": "^11.0.2",
     "firebase-admin": "^13.0.0",
+    "genkit": "^1.14.0",
     "lucide-react": "^0.460.0",
     "next": "^15.3.1",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "webpack": "^5.99.9"
   },
   "devDependencies": {
     "@types/node": "^20",
