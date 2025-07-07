@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 import type { Configuration as WebpackConfig } from 'webpack';
+import CopyWebpackPlugin from 'copy-webpack-plugin';
+import path from 'path';
 
 const nextConfig: NextConfig = {
   // Enable webpack analyzer in production build
@@ -22,6 +24,23 @@ const nextConfig: NextConfig = {
       { module: /handlebars/ },
       { module: /@opentelemetry/ }
     ];
+
+    if (isServer) {
+      config.plugins = config.plugins || [];
+      config.plugins.push(
+        new CopyWebpackPlugin({
+          patterns: [
+            {
+              from: path.join(__dirname, 'node_modules/@genkit-ai/evaluator/prompts'),
+              to: path.join(__dirname, '.next/prompts'),
+              globOptions: {
+                ignore: ['**/.*'],
+              },
+            },
+          ],
+        })
+      );
+    }
 
     return config;
   },
