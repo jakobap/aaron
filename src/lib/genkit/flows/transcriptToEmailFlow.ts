@@ -5,10 +5,12 @@ import { createAI, createVertexAI } from '../genkitFactory';
 import { z } from "genkit";
 import { createSimpleFirestoreVSRetriever } from '../retriever/simpleSearchRetriever';
 import { gemini25ProPreview0325 } from '@genkit-ai/vertexai';
+import { researchAgentFlow } from './researchAgentFlow';
+import { Document } from 'genkit/retriever';
 
 // Create AI instance & retriever using the factory
-// const ai = await createAI(gemini25FlashPreview0417);
-const ai = await createVertexAI();
+const ai = await createAI();
+// const ai = await createVertexAI();
 
 await createSimpleFirestoreVSRetriever(ai);
 
@@ -39,7 +41,7 @@ export const taskExtractionFlow = ai.defineFlow(
                 transcript: transcript,
             },
             {
-                model: gemini25ProPreview0325,
+                model: 'googleai/gemini-2.5-pro',
                 output: { schema: TaskArraySchema }
             }
         );
@@ -47,6 +49,7 @@ export const taskExtractionFlow = ai.defineFlow(
         return output;
     }
 );
+
 
 
 // STEP 2: Task Research
@@ -112,6 +115,40 @@ export const taskReseachFlow = ai.defineFlow(
 );
 
 
+export const agenticTaskResearchFlow = ai.defineFlow(
+    {
+        name: "agenticTaskResearchFlow",
+        inputSchema: TaskArraySchema,
+        outputSchema: TaskResearchResponseArray,
+    },
+    async (tasks) => {
+        console.log("Running Task Research Flow with Research Agent...");
+
+        const researchPromises = tasks.map(async (task) => {
+            const { summary, docs } = await researchAgentFlow(task.description);
+
+            // Transform the agent's response to the required format
+            const docReferences = docs.map((doc) => ({
+                title: doc.metadata?.title || 'Untitled',
+                url: doc.metadata?.link || '',
+                relevantContent: doc.content?.map((c: { text?: string }) => c.text || '').join('\n') || '',
+            }));
+
+            return {
+                answer: summary,
+                caveats: [], // researchAgentFlow doesn't produce caveats
+                docReferences: docReferences,
+            };
+        });
+
+        const researchResults = await Promise.all(researchPromises);
+        return researchResults;
+    }
+);
+
+
+
+
 // STEP 3: Email Generation based on research
 export const emailAggregationFlow = ai.defineFlow(
     {
@@ -131,7 +168,7 @@ export const emailAggregationFlow = ai.defineFlow(
             research: JSON.stringify(input.researchResults, null, 2)
         },
             {
-                model: gemini25ProPreview0325,
+                model: 'googleai/gemini-2.5-pro',
             });
 
         return output.email;
@@ -154,7 +191,8 @@ export const transcriptToEmailFlow = ai.defineFlow(
 
         const extractedTasks = await taskExtractionFlow(transcript);
 
-        const taskResearchResults = await taskReseachFlow(extractedTasks);
+        // const taskResearchResults = await taskReseachFlow(extractedTasks);
+        const taskResearchResults = await agenticTaskResearchFlow(extractedTasks);
 
         const email = await emailAggregationFlow({
             tasks: extractedTasks,

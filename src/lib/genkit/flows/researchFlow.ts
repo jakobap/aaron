@@ -4,7 +4,8 @@ import { createAI, createVertexAI } from '../genkitFactory';
 import { z } from "genkit";
 
 // Create AI instance using the factory
-const ai = await createVertexAI();
+const ai = await createAI();
+// const ai = await createVertexAI();
 
 const customSearchRetriever = await createCustomSearchRetriever(ai);
 
