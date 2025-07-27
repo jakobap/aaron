@@ -1,15 +1,10 @@
 import { createCustomSearchRetriever } from '../retriever/customSearch';
 import { createAI, createVertexAI } from '../genkitFactory';
-import { gemini25ProPreview0325 } from '@genkit-ai/vertexai';
-// import { gemini20Flash, gemini25ProPreview0325, gemini25FlashPreview0417 } from "@genkit-ai/googleai";
-
 
 import { z } from "genkit";
 
 // Create AI instance using the factory
-// const ai = await createAI(gemini25FlashPreview0417);
 const ai = await createVertexAI();
-
 
 const customSearchRetriever = await createCustomSearchRetriever(ai);
 
@@ -45,7 +40,6 @@ export const researchFlow = ai.defineFlow(
           },
           {
             docs: docs,
-            model: gemini25ProPreview0325
           }
         );
 
