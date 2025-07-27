@@ -1,10 +1,10 @@
 'use server';
 
 import { createAI, createVertexAI } from '../genkitFactory';
-// import { gemini20Flash, gemini25ProPreview0325, gemini25FlashPreview0417 } from "@genkit-ai/googleai";
 import { z } from "genkit";
 import { createSimpleFirestoreVSRetriever } from '../retriever/simpleSearchRetriever';
-import { gemini25ProPreview0325 } from '@genkit-ai/vertexai';
+import { vertexAI } from '@genkit-ai/vertexai';
+
 
 // Create AI instance & retriever using the factory
 // const ai = await createAI(gemini25FlashPreview0417);
@@ -39,7 +39,7 @@ export const taskExtractionFlow = ai.defineFlow(
                 transcript: transcript,
             },
             {
-                model: gemini25ProPreview0325,
+                model: vertexAI.model('gemini-2.5-pro'),
                 output: { schema: TaskArraySchema }
             }
         );
@@ -131,7 +131,7 @@ export const emailAggregationFlow = ai.defineFlow(
             research: JSON.stringify(input.researchResults, null, 2)
         },
             {
-                model: gemini25ProPreview0325,
+                model: vertexAI.model('gemini-2.5-pro'),
             });
 
         return output.email;
