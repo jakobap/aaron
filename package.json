@@ -9,9 +9,9 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@genkit-ai/firebase": "^1.14.0",
-    "@genkit-ai/googleai": "^1.14.0",
-    "@genkit-ai/vertexai": "^1.14.0",
+    "@genkit-ai/firebase": "^1.15.5",
+    "@genkit-ai/googleai": "^1.15.5",
+    "@genkit-ai/vertexai": "^1.15.5",
     "genkit": "^1.14.0",
     "@google-cloud/aiplatform": "^3.33.0",
     "@google-cloud/firestore": "^7.11.0",
@@ -33,7 +33,7 @@
     "@types/react-dom": "^19.1.0",
     "eslint": "^8",
     "eslint-config-next": "^15.3.1",
-    "genkit-cli": "^1.14.0",
+    "genkit-cli": "^1.15.5",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
     "typescript": "^5"
