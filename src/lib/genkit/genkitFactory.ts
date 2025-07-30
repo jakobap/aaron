@@ -28,7 +28,7 @@ export type SupportedModel =
 // Factory function to create GenKit instances with specific models
 export async function createAI(modelString: string = 'gemini-2.5-flash') {
     enableFirebaseTelemetry();
-    const model = googleAI.model(modelString);
+    const model = vertexAI.model(modelString);
     return genkit({
         plugins: [
             googleAI(),
@@ -46,7 +46,7 @@ export async function createAI(modelString: string = 'gemini-2.5-flash') {
 // Factory function to create GenKit instances with specific models
 export async function createBetaAI(modelString: string = 'gemini-2.5-flash') {
     enableFirebaseTelemetry();
-    const model = googleAI.model(modelString);
+    const model = vertexAI.model(modelString);
     return genkitBeta({
         plugins: [
             googleAI(),
