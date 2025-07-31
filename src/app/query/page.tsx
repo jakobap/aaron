@@ -113,7 +113,7 @@ const QueryPanelPage = () => {
       }
     }, 5000);
     return () => clearInterval(pollingInterval);
-  }, []);
+  }, [documents]);
 
   // Modified handleSubmit to store research data
   const handleSubmit = async (e: React.FormEvent) => {
