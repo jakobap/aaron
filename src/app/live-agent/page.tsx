@@ -38,6 +38,27 @@ const LiveAgentPage = () => {
         if (message.serverContent?.modelTurn?.parts) {
             console.log("Message:", message.serverContent?.modelTurn?.parts)
             for (const part of message.serverContent.modelTurn.parts) {
+                const handleCommentary = (newCommentary: string) => {
+                    if (newCommentary && newCommentary.toLowerCase().trim() !== "silence.") {
+                        console.log(`🎤 Commentary: ${newCommentary}`);
+                        setCommentary(prev => [...prev, newCommentary]);
+                        setTopics(prevTopics => {
+                            const newTopics = [...prevTopics];
+                            if (newTopics.length > 0) {
+                                newTopics[newTopics.length - 1].commentaries.push(newCommentary);
+                            } else {
+                                // If no topics exist yet, create a default one
+                                return [{ id: 'initial-topic', title: "General Discussion", commentaries: [newCommentary] }];
+                            }
+                            return newTopics;
+                        });
+                    }
+                };
+
+                if (part.text) {
+                    handleCommentary(part.text);
+                }
+                
                 if (part.functionCall) {
                     const { name, args } = part.functionCall;
                     if (name === 'addNewTopic' && args?.topic) {
@@ -51,20 +72,7 @@ const LiveAgentPage = () => {
                         });
                     }
                     if (name === 'provideCommentary' && args?.commentary) {
-                        const newCommentary = args.commentary as string;
-                        if (newCommentary && newCommentary.toLowerCase() !== "silence.") {
-                            console.log(`🎤 Commentary: ${newCommentary}`);
-                            setCommentary(prev => [...prev, newCommentary]);
-                            setTopics(prevTopics => {
-                                const newTopics = [...prevTopics];
-                                if (newTopics.length > 0) {
-                                    newTopics[newTopics.length - 1].commentaries.push(newCommentary);
-                                } else {
-                                    return [{ id: 'initial-topic', title: "General Discussion", commentaries: [newCommentary] }];
-                                }
-                                return newTopics;
-                            });
-                        }
+                        handleCommentary(args.commentary as string);
                     }
                 }
             }
