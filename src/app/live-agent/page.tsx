@@ -5,7 +5,9 @@ import {
     GoogleGenAI,
     Session,
     LiveServerMessage,
-    Modality
+    Modality,
+    Type,
+    Behavior
 } from '@google/genai';
 import TopicList from '../components/AgentPanel/TopicList';
 import { AudioRecorder } from '@/lib/AudioStream/AudioRecorder';
@@ -15,6 +17,39 @@ interface Topic {
     title: string;
     commentaries: string[];
 }
+
+const provideCommentaryFunction = {
+    name: 'provideCommentary',
+    behavior: Behavior.NON_BLOCKING,
+    description: 'Provides commentary on the audio chunk. Must always be called.',
+    parameters: {
+        type: Type.OBJECT,
+        properties: {
+            commentary: {
+                type: Type.STRING,
+                description: 'The commentary of speech, description of sounds, or "Silence."',
+            },
+        },
+        required: ['commentary'],
+    },
+}
+
+const newTopicFunction = {
+    name: 'addNewTopic',
+    behavior: Behavior.NON_BLOCKING,
+    description: 'Call this when a new, distinct topic of conversation begins.',
+    parameters: {
+        type: Type.OBJECT,
+        properties: {
+            topic: {
+                type: Type.STRING,
+                description: 'A concise, descriptive name for the new topic.',
+            },
+        },
+        required: ['topic'],
+    },
+}
+
 
 const LiveAgentPage = () => {
     const [status, setStatus] = useState('Please start the capture.');
@@ -58,7 +93,7 @@ const LiveAgentPage = () => {
                 if (part.text) {
                     handleCommentary(part.text);
                 }
-                
+
                 if (part.functionCall) {
                     const { name, args } = part.functionCall;
                     if (name === 'addNewTopic' && args?.topic) {
@@ -147,14 +182,36 @@ const LiveAgentPage = () => {
             }
             const ai = new GoogleGenAI({ apiKey });
 
-            const prompt = `You are an expert meeting summarizer and topic analyst. Your task is to listen to an ongoing audio stream and provide high-level, concise commentary about what is being discussed. You are not a transcriber; you are a summarizer.
-                            Listen to the audio chunk and provide commentary on it's content. The commentary should be a **high-level summary** of what was just said or what happened. It should not be a direct transcription. If there is no sound, use "Silence.".`;
+            const prompt = `You are an expert meeting summarizer and topic analyst.
+                        Your task is to listen to an ongoing audio stream and provide high-level, concise commentary about what is being discussed.
+                        You are not a transcriber; you are a summarizer.
+
+                        **Your instructions:**
+                        1.  **Listen to the audio chunk.**
+                        2.  **Analyze the content in the context of the previous commentary and the identified topics.**
+                        3.  **Provide Commentary on the current chunk in the context of previous commentary.**
+                            The commentary should be a **high-level summary** of what was just said or what happened. It should not be a direct transcription. If there is no sound, use "Silence.".
+                        4.  **Decide whether a new topic should be opened based on the current chunk. Call the appropriate tool if necessary.**
+                            If a **new, major topic** emerges that is distinct from the **existing list of topics**, you **MUST** call the addNewTopic tool with a concise name for the new topic (e.g., "Q3 Financial Review", "Marketing Campaign Brainstorm").
+                        5.  **Ensure continuity:** Your commentary should flow logically from the previous statements, creating a running summary of the meeting.
+
+                        **Identified topics for context:**
+                        ${topics || 'No topics have been identified yet.'}
+
+                        **Previous commentary for context:**
+                        ${commentary || 'This is the beginning of the conversation.'}
+
+                        Now, analyze the new audio chunk and provide your summary and any new topics via the tools.`;
 
             sessionRef.current = await ai.live.connect({
                 model: 'models/gemini-2.5-flash-live-preview',
                 config: {
                     systemInstruction: { role: 'user', parts: [{ text: prompt }] },
-                    responseModalities: [Modality.TEXT]
+                    responseModalities: [Modality.TEXT],
+                    tools: [
+                        // { functionDeclarations: [provideCommentaryFunction] },
+                        { functionDeclarations: [newTopicFunction] }
+                    ]
                 },
                 callbacks: {
                     onopen: () => console.log('🚀 Live session opened'),
@@ -175,6 +232,7 @@ const LiveAgentPage = () => {
             audioRecorderRef.current = new AudioRecorder();
             audioRecorderRef.current.on('data', (base64Audio: string) => {
                 if (sessionRef.current && isCapturingRef.current) {
+                    console.log("sending new cunk...")
                     sessionRef.current.sendRealtimeInput({
                         audio: {
                             data: base64Audio,
