@@ -7,7 +7,10 @@ import {
     LiveServerMessage,
     Modality,
     Type,
-    Behavior
+    Behavior,
+    ActivityHandling,
+    TurnCoverage,
+    ActivityEnd
 } from '@google/genai';
 import TopicList from '../components/AgentPanel/TopicList';
 import { AudioRecorder } from '@/lib/AudioStream/AudioRecorder';
@@ -20,8 +23,8 @@ interface Topic {
 
 const newTopicFunction = {
     name: 'addNewTopic',
-    behavior: Behavior.NON_BLOCKING,
-    description: 'Call this when a new, distinct topic of conversation begins.',
+    behavior: Behavior.BLOCKING,
+    description: 'Open a new conversation topic.',
     parameters: {
         type: Type.OBJECT,
         properties: {
@@ -38,7 +41,6 @@ const newTopicFunction = {
 const LiveAgentPage = () => {
     const [status, setStatus] = useState('Please start the capture.');
     const [isCapturing, setIsCapturing] = useState(false);
-    const [commentary, setCommentary] = useState<string[]>([]);
     const [topics, setTopics] = useState<Topic[]>([]);
     const [liveTranscript, setLiveTranscript] = useState(''); // Holds the in-progress sentence
 
@@ -59,7 +61,6 @@ const LiveAgentPage = () => {
             if (transcriptToFlush) {
                 const sentences = transcriptToFlush.split(/(?<=[.!?])\s*/).filter(s => s.trim().length > 0);
                 if (sentences.length > 0) {
-                    setCommentary(prev => [...prev, ...sentences]);
                     setTopics(prevTopics => {
                         const newTopics = [...prevTopics];
                         if (newTopics.length > 0) {
@@ -76,6 +77,8 @@ const LiveAgentPage = () => {
     }, []);
 
     const handleModelResponse = (message: LiveServerMessage) => {
+        console.log("Handling Model Response: ", message)
+
         if (!message.serverContent?.modelTurn?.parts) {
             return;
         }
@@ -91,9 +94,6 @@ const LiveAgentPage = () => {
                 if (sentences.length > 1) {
                     const completeSentences = sentences.slice(0, -1);
                     const remainingTranscript = sentences.slice(-1)[0] || '';
-
-                    setCommentary(prevCommentary => [...prevCommentary, ...completeSentences]);
-
                     setTopics(prevTopics => {
                         const newTopics = [...prevTopics];
                         if (newTopics.length > 0) {
@@ -112,6 +112,9 @@ const LiveAgentPage = () => {
         };
 
         for (const part of message.serverContent.modelTurn.parts) {
+
+            console.log("Handling Part: ", part)
+
             if (part.text) {
                 console.log("Handling Commentary: ", part.text)
                 handleCommentary(part.text);
@@ -176,7 +179,6 @@ const LiveAgentPage = () => {
     const startCapture = async () => {
         try {
             setStatus('Requesting permission... Please select a tab.');
-            setCommentary([]);
             setTopics([]);
             setLiveTranscript('');
 
@@ -201,7 +203,12 @@ const LiveAgentPage = () => {
             if (!apiKey) {
                 throw new Error("NEXT_PUBLIC_GEMINI_API_KEY is not set in environment variables.");
             }
-            const ai = new GoogleGenAI({ apiKey });
+            const ai = new GoogleGenAI({
+                apiKey
+                // vertexai: true,
+                // project: process.env.GCP_PROJECT_ID,
+                // location: process.env.GCP_REGION
+            });
 
             const prompt = `You are an expert meeting summarizer and topic analyst.
                         Your task is to listen to an ongoing audio stream and provide high-level, concise commentary about what is being discussed.
@@ -225,6 +232,15 @@ const LiveAgentPage = () => {
                     systemInstruction: { role: 'user', parts: [{ text: prompt }] },
                     temperature: 0.3,
                     responseModalities: [Modality.TEXT],
+                    // sessionResumption: { handle: previousSessionHandle },
+                    contextWindowCompression: {
+                        slidingWindow: { targetTokens: '1000' }
+                    },
+                    realtimeInputConfig: {
+                        // activityHandling: ActivityHandling.NO_INTERRUPTION,
+                        // turnCoverage: TurnCoverage.TURN_INCLUDES_ONLY_ACTIVITY,
+                        automaticActivityDetection: { disabled: false }
+                    },
                     tools: [
                         { functionDeclarations: [newTopicFunction] }
                     ]
@@ -249,12 +265,23 @@ const LiveAgentPage = () => {
             audioRecorderRef.current.on('data', (base64Audio: string) => {
                 if (sessionRef.current && isCapturingRef.current) {
                     console.log("sending new cunk...")
+                    // sessionRef.current.sendRealtimeInput({ activityStart: {} })
                     sessionRef.current.sendRealtimeInput({
+                        // activityStart: {},
                         audio: {
                             data: base64Audio,
                             mimeType: 'audio/pcm;rate=16000',
-                        }
+                        },
+                        // audioStreamEnd: true
+                        // activityEnd: {}
                     });
+                    // sessionRef.current.sendRealtimeInput({ activityStart: {} });
+                    // sessionRef.current.sendRealtimeInput({ activityEnd: {} });
+                    // sessionRef.current.sendRealtimeInput({ audioStreamEnd: true });
+                    // sessionRef.current.sendClientContent({
+                    //     text: 'Analyze this audio extract according to the rules defined above',
+                    //     turnComplete: t 
+                    // });
                 }
             });
 
@@ -283,6 +310,8 @@ const LiveAgentPage = () => {
             }
         };
     }, [stopCapture]);
+
+    const allCommentaries = topics.flatMap(t => t.commentaries);
 
     return (
         <div className="bg-gray-900 text-white flex items-center justify-center min-h-screen p-4">
@@ -315,14 +344,14 @@ const LiveAgentPage = () => {
                     <div className="mt-6 bg-gray-700 p-4 rounded-lg h-64 overflow-y-auto">
                         <h2 className="text-lg font-semibold text-purple-400 mb-2">Live Commentary</h2>
                         <div id="commentary" className="text-gray-300 space-y-2 text-left">
-                            {commentary.map((text, index) => (
+                            {allCommentaries.map((text, index) => (
                                 <p key={index}>- {text}</p>
                             ))}
                             {isCapturing && liveTranscript && (
                                 <p className="text-gray-400">- {liveTranscript}</p>
                             )}
-                            {isCapturing && commentary.length === 0 && !liveTranscript && <p>Waiting for first commentary...</p>}
-                            {!isCapturing && commentary.length === 0 && !liveTranscript && <p>Start capture to see live commentary.</p>}
+                            {isCapturing && allCommentaries.length === 0 && !liveTranscript && <p>Waiting for first commentary...</p>}
+                            {!isCapturing && allCommentaries.length === 0 && !liveTranscript && <p>Start capture to see live commentary.</p>}
                         </div>
                     </div>
 
