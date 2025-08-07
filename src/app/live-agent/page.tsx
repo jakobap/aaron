@@ -10,7 +10,8 @@ import {
     Behavior,
     ActivityHandling,
     TurnCoverage,
-    ActivityEnd
+    ActivityEnd,
+    EndSensitivity
 } from '@google/genai';
 import TopicList from '../components/AgentPanel/TopicList';
 import { AudioRecorder } from '@/lib/AudioStream/AudioRecorder';
@@ -23,7 +24,7 @@ interface Topic {
 
 const newTopicFunction = {
     name: 'addNewTopic',
-    behavior: Behavior.BLOCKING,
+    // behavior: Behavior.BLOCKING,
     description: 'Open a new conversation topic.',
     parameters: {
         type: Type.OBJECT,
@@ -120,21 +121,24 @@ const LiveAgentPage = () => {
                 handleCommentary(part.text);
             }
 
-            if (part.functionCall) {
-                console.log("Handling Function Call: ", part.functionCall)
-                const { name, args } = part.functionCall;
-                if (name === 'addNewTopic' && args?.topic) {
-                    const newTopicTitle = args.topic as string;
-                    console.log(`✨ New Topic Identified: ${newTopicTitle}`);
+            if (part.toolCall?.functionCalls) {
+                console.log("Handling Tool Call: ", part.toolCall);
+                for (const functionCall of part.toolCall.functionCalls) {
+                    console.log("Handling Function Call: ", functionCall);
+                    const { name, args } = functionCall;
+                    if (name === 'addNewTopic' && args?.topic) {
+                        const newTopicTitle = args.topic as string;
+                        console.log(`✨ New Topic Identified: ${newTopicTitle}`);
 
-                    flushLiveTranscript();
+                        flushLiveTranscript();
 
-                    setTopics(prev => {
-                        if (prev.some(t => t.title === newTopicTitle)) {
-                            return prev; // Avoid adding duplicate topics
-                        }
-                        return [...prev, { id: Date.now().toString(), title: newTopicTitle, commentaries: [] }];
-                    });
+                        setTopics(prev => {
+                            if (prev.some(t => t.title === newTopicTitle)) {
+                                return prev; // Avoid adding duplicate topics
+                            }
+                            return [...prev, { id: Date.now().toString(), title: newTopicTitle, commentaries: [] }];
+                        });
+                    }
                 }
             }
         }
@@ -211,35 +215,39 @@ const LiveAgentPage = () => {
             });
 
             const prompt = `You are an expert meeting summarizer and topic analyst.
-                        Your task is to listen to an ongoing audio stream and provide high-level, concise commentary about what is being discussed.
+                        Your task is to listen to an ongoing audio stream and provide high-level, concise commentary about what is being discussed and sepatate high level topcs being discussed.
                         You are not a transcriber; you are a summarizer.
 
                         **Your instructions:**
                         1.  **Listen to the audio chunk.**
                         2.  **Analyze the content in the context of the previous commentary and the identified topics.**
-                        3.  **Provide Commentary on the current chunk in the context of previous commentary.**
-                            The commentary should be a **high-level summary** of what was just said or what happened. It should not be a direct transcription. If there is no sound, use "Silence.".
-                        4.  **Decide whether a new topic should be opened based on the current chunk. Call the appropriate tool if necessary.**
+                        3.  **Decide whether a new topic should be opened based on the current chunk. Call addNewTopic tool if necessary.**
                             If a **new, major topic** emerges that is distinct from the **existing list of topics**, you **MUST** call the addNewTopic tool with a concise name for the new topic (e.g., "Q3 Financial Review", "Marketing Campaign Brainstorm", "News about Climate Change", "The Weather" etc.).
+
+                        4.  **Provide Commentary on the current chunk in the context of previous commentary.**
+                            The commentary should be a **high-level summary** of what was just said or what happened. It should not be a direct transcription. If there is no sound, use "Silence.".
                         5.  **Ensure continuity:** Your commentary should flow logically from the previous statements, creating a running summary of the meeting.
                         6.  **Ensure full sentence:** Always make sure to return full sentences as your reponse. It's crucial that you NEVER return partial sentences.
 
                         Now, analyze the new audio chunk and provide your summary and any new topics via the tools.`;
 
             sessionRef.current = await ai.live.connect({
-                model: 'models/gemini-2.5-flash-live-preview',
+                model: 'models/gemini-2.0-flash-live-001',
                 config: {
                     systemInstruction: { role: 'user', parts: [{ text: prompt }] },
-                    temperature: 0.3,
+                    temperature: .8,
                     responseModalities: [Modality.TEXT],
                     // sessionResumption: { handle: previousSessionHandle },
                     contextWindowCompression: {
                         slidingWindow: { targetTokens: '1000' }
                     },
                     realtimeInputConfig: {
-                        // activityHandling: ActivityHandling.NO_INTERRUPTION,
-                        // turnCoverage: TurnCoverage.TURN_INCLUDES_ONLY_ACTIVITY,
-                        automaticActivityDetection: { disabled: false }
+                        activityHandling: ActivityHandling.NO_INTERRUPTION,
+                        turnCoverage: TurnCoverage.TURN_INCLUDES_ALL_INPUT,
+                        automaticActivityDetection: {
+                            disabled: false,
+                            endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_HIGH
+                         }
                     },
                     tools: [
                         { functionDeclarations: [newTopicFunction] }
