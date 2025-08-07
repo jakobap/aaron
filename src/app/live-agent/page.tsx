@@ -18,22 +18,6 @@ interface Topic {
     commentaries: string[];
 }
 
-const provideCommentaryFunction = {
-    name: 'provideCommentary',
-    behavior: Behavior.NON_BLOCKING,
-    description: 'Provides commentary on the audio chunk. Must always be called.',
-    parameters: {
-        type: Type.OBJECT,
-        properties: {
-            commentary: {
-                type: Type.STRING,
-                description: 'The commentary of speech, description of sounds, or "Silence."',
-            },
-        },
-        required: ['commentary'],
-    },
-}
-
 const newTopicFunction = {
     name: 'addNewTopic',
     behavior: Behavior.NON_BLOCKING,
@@ -56,6 +40,7 @@ const LiveAgentPage = () => {
     const [isCapturing, setIsCapturing] = useState(false);
     const [commentary, setCommentary] = useState<string[]>([]);
     const [topics, setTopics] = useState<Topic[]>([]);
+    const [liveTranscript, setLiveTranscript] = useState(''); // Holds the in-progress sentence
 
     // Refs for mutable state that doesn't trigger re-renders
     const isCapturingRef = useRef(isCapturing);
@@ -68,47 +53,85 @@ const LiveAgentPage = () => {
     // UI Refs
     const playbackAudioRef = useRef<HTMLAudioElement | null>(null);
 
-    const handleModelResponse = (message: LiveServerMessage) => {
-        console.log("Handle Response")
-        if (message.serverContent?.modelTurn?.parts) {
-            console.log("Message:", message.serverContent?.modelTurn?.parts)
-            for (const part of message.serverContent.modelTurn.parts) {
-                const handleCommentary = (newCommentary: string) => {
-                    if (newCommentary && newCommentary.toLowerCase().trim() !== "silence.") {
-                        console.log(`🎤 Commentary: ${newCommentary}`);
-                        setCommentary(prev => [...prev, newCommentary]);
-                        setTopics(prevTopics => {
-                            const newTopics = [...prevTopics];
-                            if (newTopics.length > 0) {
-                                newTopics[newTopics.length - 1].commentaries.push(newCommentary);
-                            } else {
-                                // If no topics exist yet, create a default one
-                                return [{ id: 'initial-topic', title: "General Discussion", commentaries: [newCommentary] }];
-                            }
-                            return newTopics;
-                        });
-                    }
-                };
-
-                if (part.text) {
-                    handleCommentary(part.text);
+    const flushLiveTranscript = useCallback(() => {
+        setLiveTranscript(prevTranscript => {
+            const transcriptToFlush = prevTranscript.trim();
+            if (transcriptToFlush) {
+                const sentences = transcriptToFlush.split(/(?<=[.!?])\s*/).filter(s => s.trim().length > 0);
+                if (sentences.length > 0) {
+                    setCommentary(prev => [...prev, ...sentences]);
+                    setTopics(prevTopics => {
+                        const newTopics = [...prevTopics];
+                        if (newTopics.length > 0) {
+                            newTopics[newTopics.length - 1].commentaries.push(...sentences);
+                        } else {
+                            return [{ id: 'initial-topic', title: "General Discussion", commentaries: [...sentences] }];
+                        }
+                        return newTopics;
+                    });
                 }
+            }
+            return ''; // Reset live transcript
+        });
+    }, []);
 
-                if (part.functionCall) {
-                    const { name, args } = part.functionCall;
-                    if (name === 'addNewTopic' && args?.topic) {
-                        const newTopicTitle = args.topic as string;
-                        console.log(`✨ New Topic Identified: ${newTopicTitle}`);
-                        setTopics(prev => {
-                            if (prev.some(t => t.title === newTopicTitle)) {
-                                return prev; // Avoid adding duplicate topics
-                            }
-                            return [...prev, { id: Date.now().toString(), title: newTopicTitle, commentaries: [] }];
-                        });
-                    }
-                    if (name === 'provideCommentary' && args?.commentary) {
-                        handleCommentary(args.commentary as string);
-                    }
+    const handleModelResponse = (message: LiveServerMessage) => {
+        if (!message.serverContent?.modelTurn?.parts) {
+            return;
+        }
+
+        const handleCommentary = (newCommentary: string) => {
+            if (!newCommentary || newCommentary.toLowerCase().trim() === "silence.") {
+                return;
+            }
+            setLiveTranscript(prev => {
+                const updatedTranscript = (prev + newCommentary).trim();
+                const sentences = updatedTranscript.split(/(?<=[.!?])\s*/).filter(s => s.trim().length > 0);
+
+                if (sentences.length > 1) {
+                    const completeSentences = sentences.slice(0, -1);
+                    const remainingTranscript = sentences.slice(-1)[0] || '';
+
+                    setCommentary(prevCommentary => [...prevCommentary, ...completeSentences]);
+
+                    setTopics(prevTopics => {
+                        const newTopics = [...prevTopics];
+                        if (newTopics.length > 0) {
+                            newTopics[newTopics.length - 1].commentaries.push(...completeSentences);
+                        } else if (completeSentences.length > 0) {
+                            return [{ id: 'initial-topic', title: "General Discussion", commentaries: [...completeSentences] }];
+                        }
+                        return newTopics;
+                    });
+
+                    return remainingTranscript;
+                } else {
+                    return updatedTranscript;
+                }
+            });
+        };
+
+        for (const part of message.serverContent.modelTurn.parts) {
+            if (part.text) {
+                console.log("Handling Commentary: ", part.text)
+                handleCommentary(part.text);
+            }
+
+            if (part.functionCall) {
+                console.log("Handling Function Call: ", part.functionCall)
+                const { name, args } = part.functionCall;
+                if (name === 'addNewTopic' && args?.topic) {
+                    const newTopicTitle = args.topic as string;
+                    console.log(`✨ New Topic Identified: ${newTopicTitle}`);
+
+                    flushLiveTranscript();
+
+                    setTopics(prev => {
+                        if (prev.some(t => t.title === newTopicTitle)) {
+                            return prev; // Avoid adding duplicate topics
+                        }
+                        return [...prev, { id: Date.now().toString(), title: newTopicTitle, commentaries: [] }];
+                    });
                 }
             }
         }
@@ -145,14 +168,17 @@ const LiveAgentPage = () => {
             playbackAudioRef.current.srcObject = null;
         }
 
+        flushLiveTranscript();
+
         setStatus('🔴 Capture stopped. Ready to start again.');
-    }, []);
+    }, [flushLiveTranscript]);
 
     const startCapture = async () => {
         try {
             setStatus('Requesting permission... Please select a tab.');
             setCommentary([]);
             setTopics([]);
+            setLiveTranscript('');
 
             const displayStream = await navigator.mediaDevices.getDisplayMedia({
                 video: true,
@@ -168,11 +194,6 @@ const LiveAgentPage = () => {
 
             audioTrackRef.current = audioTracks[0];
             capturedStreamRef.current = new MediaStream([audioTrackRef.current]);
-
-            if (playbackAudioRef.current) {
-                playbackAudioRef.current.srcObject = capturedStreamRef.current;
-                playbackAudioRef.current.play().catch(e => console.error("Playback failed:", e));
-            }
 
             setStatus('Initializing live session...');
 
@@ -192,14 +213,9 @@ const LiveAgentPage = () => {
                         3.  **Provide Commentary on the current chunk in the context of previous commentary.**
                             The commentary should be a **high-level summary** of what was just said or what happened. It should not be a direct transcription. If there is no sound, use "Silence.".
                         4.  **Decide whether a new topic should be opened based on the current chunk. Call the appropriate tool if necessary.**
-                            If a **new, major topic** emerges that is distinct from the **existing list of topics**, you **MUST** call the addNewTopic tool with a concise name for the new topic (e.g., "Q3 Financial Review", "Marketing Campaign Brainstorm").
+                            If a **new, major topic** emerges that is distinct from the **existing list of topics**, you **MUST** call the addNewTopic tool with a concise name for the new topic (e.g., "Q3 Financial Review", "Marketing Campaign Brainstorm", "News about Climate Change", "The Weather" etc.).
                         5.  **Ensure continuity:** Your commentary should flow logically from the previous statements, creating a running summary of the meeting.
-
-                        **Identified topics for context:**
-                        ${topics || 'No topics have been identified yet.'}
-
-                        **Previous commentary for context:**
-                        ${commentary || 'This is the beginning of the conversation.'}
+                        6.  **Ensure full sentence:** Always make sure to return full sentences as your reponse. It's crucial that you NEVER return partial sentences.
 
                         Now, analyze the new audio chunk and provide your summary and any new topics via the tools.`;
 
@@ -207,9 +223,9 @@ const LiveAgentPage = () => {
                 model: 'models/gemini-2.5-flash-live-preview',
                 config: {
                     systemInstruction: { role: 'user', parts: [{ text: prompt }] },
+                    temperature: 0.3,
                     responseModalities: [Modality.TEXT],
                     tools: [
-                        // { functionDeclarations: [provideCommentaryFunction] },
                         { functionDeclarations: [newTopicFunction] }
                     ]
                 },
@@ -296,19 +312,17 @@ const LiveAgentPage = () => {
                         </button>
                     </div>
 
-                    <div className="bg-gray-700 p-4 rounded-lg">
-                        <label htmlFor="playback" className="block text-sm font-medium text-gray-400 mb-2">Live Audio Playback:</label>
-                        <audio id="playback" ref={playbackAudioRef} controls className="w-full"></audio>
-                    </div>
-
                     <div className="mt-6 bg-gray-700 p-4 rounded-lg h-64 overflow-y-auto">
                         <h2 className="text-lg font-semibold text-purple-400 mb-2">Live Commentary</h2>
                         <div id="commentary" className="text-gray-300 space-y-2 text-left">
                             {commentary.map((text, index) => (
                                 <p key={index}>- {text}</p>
                             ))}
-                            {isCapturing && commentary.length === 0 && <p>Waiting for first commentary...</p>}
-                            {!isCapturing && commentary.length === 0 && <p>Start capture to see live commentary.</p>}
+                            {isCapturing && liveTranscript && (
+                                <p className="text-gray-400">- {liveTranscript}</p>
+                            )}
+                            {isCapturing && commentary.length === 0 && !liveTranscript && <p>Waiting for first commentary...</p>}
+                            {!isCapturing && commentary.length === 0 && !liveTranscript && <p>Start capture to see live commentary.</p>}
                         </div>
                     </div>
 
