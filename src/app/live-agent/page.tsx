@@ -11,7 +11,8 @@ import {
     ActivityHandling,
     TurnCoverage,
     ActivityEnd,
-    EndSensitivity
+    EndSensitivity,
+    FunctionResponseScheduling
 } from '@google/genai';
 import TopicList from '../components/AgentPanel/TopicList';
 import { AudioRecorder } from '@/lib/AudioStream/AudioRecorder';
@@ -24,7 +25,7 @@ interface Topic {
 
 const newTopicFunction = {
     name: 'addNewTopic',
-    // behavior: Behavior.BLOCKING,
+    behavior: Behavior.NON_BLOCKING,
     description: 'Open a new conversation topic.',
     parameters: {
         type: Type.OBJECT,
@@ -121,11 +122,13 @@ const LiveAgentPage = () => {
                 handleCommentary(part.text);
             }
 
-            if (part.toolCall?.functionCalls) {
+            if (part.toolCall) {
                 console.log("Handling Tool Call: ", part.toolCall);
+                const functionResponses = [];
+
                 for (const functionCall of part.toolCall.functionCalls) {
                     console.log("Handling Function Call: ", functionCall);
-                    const { name, args } = functionCall;
+                    const { name, args, id } = functionCall;
                     if (name === 'addNewTopic' && args?.topic) {
                         const newTopicTitle = args.topic as string;
                         console.log(`✨ New Topic Identified: ${newTopicTitle}`);
@@ -138,7 +141,21 @@ const LiveAgentPage = () => {
                             }
                             return [...prev, { id: Date.now().toString(), title: newTopicTitle, commentaries: [] }];
                         });
+
+                        functionResponses.push({
+                            id: id,
+                            name: name,
+                            response: {
+                                result: `Topic "${newTopicTitle}" has been successfully created.`,
+                                scheduling: FunctionResponseScheduling.SILENT
+                            }
+                        });
                     }
+                }
+
+                if (sessionRef.current && functionResponses.length > 0) {
+                    console.log('Sending tool response...', functionResponses);
+                    sessionRef.current.sendToolResponse({ functionResponses: functionResponses });
                 }
             }
         }
@@ -235,7 +252,7 @@ const LiveAgentPage = () => {
                 model: 'models/gemini-2.0-flash-live-001',
                 config: {
                     systemInstruction: { role: 'user', parts: [{ text: prompt }] },
-                    temperature: .8,
+                    temperature: 1,
                     responseModalities: [Modality.TEXT],
                     // sessionResumption: { handle: previousSessionHandle },
                     contextWindowCompression: {
