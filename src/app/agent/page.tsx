@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import TopicList from '../components/AgentPanel/TopicList';
 
 interface Topic {
+    id: string;
     title: string;
     commentaries: string[];
 }
@@ -13,22 +14,30 @@ const AgentPage = () => {
     const [isCapturing, setIsCapturing] = useState(false);
     const [commentary, setCommentary] = useState<string[]>([]);
     const [topics, setTopics] = useState<Topic[]>([]);
+    
     const commentaryRef = useRef(commentary);
     commentaryRef.current = commentary;
+
+    const topicsRef = useRef(topics);
+    topicsRef.current = topics;
+
+    const isCapturingRef = useRef(isCapturing);
+    isCapturingRef.current = isCapturing;
+
+    const isSendingRef = useRef(false);
+
     const playbackAudioRef = useRef<HTMLAudioElement>(null);
     const capturedStreamRef = useRef<MediaStream | null>(null);
-    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioTrackRef = useRef<MediaStreamTrack | null>(null);
-    const intervalIdRef = useRef<NodeJS.Timeout | null>(null);
+    const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
     const stopCapture = useCallback(() => {
-        if (intervalIdRef.current) {
-            clearInterval(intervalIdRef.current);
-            intervalIdRef.current = null;
-        }
+        isCapturingRef.current = false;
+        setIsCapturing(false);
 
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-            mediaRecorderRef.current.stop();
+        if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
         }
 
         if (capturedStreamRef.current) {
@@ -49,56 +58,7 @@ const AgentPage = () => {
         }
 
         setStatus('🔴 Capture stopped. Ready to start again.');
-        setIsCapturing(false);
     }, []);
-
-    const handleDataAvailable = useCallback(async (event: BlobEvent) => {
-        if (event.data.size > 0) {
-            console.log("🎤 Got audio chunk, size:", event.data.size);
-            try {
-                const formData = new FormData();
-                formData.append('audio', event.data);
-                formData.append('commentary', commentaryRef.current.join('\n'));
-
-                const response = await fetch('/api/audio-transcribe', {
-                    method: 'POST',
-                    body: formData,
-                });
-
-                if (!response.ok) {
-                    throw new Error(`API request failed with status ${response.status}`);
-                }
-
-                const result = await response.json();
-
-                if (result.status === 'success') {
-                    if (result.commentary && result.commentary !== "Silence.") {
-                        setCommentary(prev => [...prev, result.commentary]);
-
-                        setTopics(prevTopics => {
-                            const newTopics = [...prevTopics];
-                            if (newTopics.length > 0) {
-                                newTopics[newTopics.length - 1].commentaries.push(result.commentary);
-                            }
-                            return newTopics;
-                        });
-                    }
-
-                    if (result.newTopic) {
-                        setTopics(prev => [...prev, { title: result.newTopic, commentaries: [] }]);
-                    }
-                } else {
-                    console.error("API Error:", result.error);
-                }
-            } catch (error) {
-                console.error("Error sending audio to backend:", error);
-            }
-        }
-        
-        if (mediaRecorderRef.current && intervalIdRef.current) {
-            mediaRecorderRef.current.start();
-        }
-    }, [commentaryRef]);
 
     const startCapture = async () => {
         try {
@@ -108,9 +68,7 @@ const AgentPage = () => {
 
             const displayStream = await navigator.mediaDevices.getDisplayMedia({
                 video: true,
-                audio: {
-                    suppressLocalAudioPlayback: false
-                },
+                audio: true,
             });
 
             const audioTracks = displayStream.getAudioTracks();
@@ -121,28 +79,96 @@ const AgentPage = () => {
                     setStatus("⚠️ Warning: Capturing microphone audio. Check selection for tab audio.");
                 }
                 capturedStreamRef.current = new MediaStream([audioTrackRef.current]);
-                console.log("✅ Tab audio stream captured:", capturedStreamRef.current);
-                console.log("Audio Track:", capturedStreamRef.current.getAudioTracks()[0]);
-                console.log("Audio Track Label:", audioTrackRef.current.label);
-
+                
                 if (playbackAudioRef.current) {
                     playbackAudioRef.current.srcObject = capturedStreamRef.current;
                     playbackAudioRef.current.play().catch(e => console.error("Playback failed:", e));
                 }
 
-                const options = { mimeType: 'audio/webm' };
-                mediaRecorderRef.current = new MediaRecorder(capturedStreamRef.current, options);
-                mediaRecorderRef.current.ondataavailable = handleDataAvailable;
-                
-                mediaRecorderRef.current.start();
                 setIsCapturing(true);
+                isCapturingRef.current = true;
                 setStatus('🟢 Capturing audio... Commentary will appear below.');
 
-                intervalIdRef.current = setInterval(() => {
-                    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-                        mediaRecorderRef.current.stop();
+                const recordAndSend = () => {
+                    if (!isCapturingRef.current || isSendingRef.current) {
+                        if (isSendingRef.current) {
+                            console.log("🔃 Previous request still in flight, skipping this interval.");
+                        }
+                        return;
                     }
-                }, 4000);
+
+                    const recorder = new MediaRecorder(capturedStreamRef.current!, { mimeType: 'audio/webm;codecs=opus' });
+                    const chunks: Blob[] = [];
+
+                    recorder.ondataavailable = (e) => {
+                        if (e.data.size > 0) {
+                            chunks.push(e.data);
+                        }
+                    };
+
+                    recorder.onstop = async () => {
+                        if (chunks.length === 0) {
+                            console.log("No audio chunks recorded in this interval.");
+                            return;
+                        }
+                        const audioBlob = new Blob(chunks, { type: 'audio/webm;codecs=opus' });
+                        
+                        console.log("🎤 Sending blob of size:", audioBlob.size);
+                        
+                        isSendingRef.current = true;
+                        try {
+                            const formData = new FormData();
+                            formData.append('audio', audioBlob);
+                            formData.append('commentary', commentaryRef.current.join('\n'));
+                            formData.append('topics', JSON.stringify(topicsRef.current.map(t => t.title)));
+
+                            const response = await fetch('/api/audio-transcribe', {
+                                method: 'POST',
+                                body: formData,
+                            });
+
+                            if (!response.ok) {
+                                throw new Error(`API request failed with status ${response.status}`);
+                            }
+
+                            const result = await response.json();
+
+                            if (result.status === 'success') {
+                                if (result.commentary && result.commentary !== "Silence.") {
+                                    setCommentary(prev => [...prev, result.commentary]);
+
+                                    setTopics(prevTopics => {
+                                        const newTopics = [...prevTopics];
+                                        if (newTopics.length > 0) {
+                                            newTopics[newTopics.length - 1].commentaries.push(result.commentary);
+                                        }
+                                        return newTopics;
+                                    });
+                                }
+
+                                if (result.newTopic) {
+                                    setTopics(prev => [...prev, { id: Date.now().toString(), title: result.newTopic, commentaries: [] }]);
+                                }
+                            } else {
+                                console.error("API Error:", result.error);
+                            }
+                        } catch (error) {
+                            console.error("Error sending audio to backend:", error);
+                        } finally {
+                            isSendingRef.current = false;
+                        }
+                    };
+
+                    recorder.start();
+                    setTimeout(() => {
+                        if (recorder.state === 'recording') {
+                            recorder.stop();
+                        }
+                    }, 4000);
+                };
+
+                recordAndSend();
+                intervalRef.current = setInterval(recordAndSend, 6000);
 
                 audioTrackRef.current.addEventListener('ended', stopCapture);
 
@@ -161,9 +187,10 @@ const AgentPage = () => {
     };
 
     useEffect(() => {
-        // Clean up tracks when the component unmounts
         return () => {
-            stopCapture();
+            if (isCapturingRef.current) {
+                stopCapture();
+            }
         };
     }, [stopCapture]);
 

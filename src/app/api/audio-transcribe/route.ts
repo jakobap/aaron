@@ -9,10 +9,12 @@ const ai = new GoogleGenAI({
 });
 
 export async function POST(request: NextRequest) {
+    console.log("Triggered Commentary API")
     try {
         const formData = await request.formData();
         const audioBlob = formData.get('audio') as Blob | null;
         const previousCommentary = formData.get('commentary') as string | null;
+        const previousTopics = formData.get('topics') as string | null;
 
         if (!audioBlob) {
             return NextResponse.json({ error: 'Audio blob not found.', status: 'error' }, { status: 400 });
@@ -24,7 +26,7 @@ export async function POST(request: NextRequest) {
 
         const audioBuffer = await audioBlob.arrayBuffer();
         const audioBase64 = Buffer.from(audioBuffer).toString('base64');
-        const mimeType = (audioBlob.type || 'audio/webm').split(';')[0];
+        const mimeType = audioBlob.type || 'audio/webm;codecs=opus';
 
         const audioPart = {
             inlineData: {
@@ -33,7 +35,27 @@ export async function POST(request: NextRequest) {
             },
         };
 
-        const prompt = `You are a highly accurate audio analysis AI. Your primary task is to provide real-time commentary on an audio stream using the tools provided.\n\n**Your instructions:**\n1.  **Listen to the audio chunk.**\n2.  **Analyze the content and call the appropriate functions:**\n    *   You **MUST** always call the \`provideCommentary\` tool. The commentary should be a transcription of speech, a description of sounds, or "Silence." if there is no sound.\n    *   If a **new, distinct topic** of conversation begins, you **MUST ALSO** call the \`addNewTopic\` tool with a concise, descriptive name for that topic (e.g., "React Component Setup", "Database Migration Strategy"). You can call both tools in parallel.\n3.  **Provide commentary via the tool:** Do not output commentary as a text response. Use the \`provideCommentary\` tool.\n\n**Previous commentary for context:**\n${previousCommentary || 'No previous commentary.'}\n\nNow, analyze the new audio chunk and call the necessary tools.`;
+        const prompt = `You are an expert meeting summarizer and topic analyst. Your task is to listen to an ongoing audio stream and provide high-level, concise commentary about what is being discussed. You are not a transcriber; you are a summarizer.
+
+                        **Your instructions:**
+                        1.  **Listen to the audio chunk.**
+                        2.  **Analyze the content in the context of the previous commentary and the identified topics.**
+                        3.  **Call the appropriate functions:**
+                            *   You **MUST** always call the 
+                        provideCommentary
+                        tool. The commentary should be a **high-level summary** of what was just said or what happened. It should not be a direct transcription. If there is no sound, use "Silence.".
+                            *   If a **new, major topic** emerges that is distinct from the **existing list of topics**, you **MUST ALSO** call the 
+                        addNewTopic
+                        tool with a concise name for the new topic (e.g., "Q3 Financial Review", "Marketing Campaign Brainstorm"). You can call both tools in parallel.
+                        4.  **Ensure continuity:** Your commentary should flow logically from the previous statements, creating a running summary of the meeting.
+
+                        **Identified topics for context:**
+                        ${previousTopics || 'No topics have been identified yet.'}
+
+                        **Previous commentary for context:**
+                        ${previousCommentary || 'This is the beginning of the conversation.'}
+
+                        Now, analyze the new audio chunk and provide your summary and any new topics via the tools.`;
 
         const functionDeclarations: FunctionDeclaration[] = [
             {
@@ -44,7 +66,7 @@ export async function POST(request: NextRequest) {
                     properties: {
                         commentary: {
                             type: Type.STRING,
-                            description: 'The transcription of speech, description of sounds, or "Silence."',
+                            description: 'The commentary of speech, description of sounds, or "Silence."',
                         },
                     },
                     required: ['commentary'],
