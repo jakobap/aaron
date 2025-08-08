@@ -4,6 +4,7 @@ import { createAI, createVertexAI } from '../genkitFactory';
 import { z } from "genkit";
 import { createSimpleFirestoreVSRetriever } from '../retriever/simpleSearchRetriever';
 import { vertexAI } from '@genkit-ai/vertexai';
+import { researchAgentFlow } from './researchAgentFlow';
 
 
 // Create AI instance & retriever using the factory

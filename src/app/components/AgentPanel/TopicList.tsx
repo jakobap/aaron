@@ -4,6 +4,7 @@
 import { useState } from 'react';
 
 interface Topic {
+    id: string;
     title: string;
     commentaries: string[];
 }
@@ -15,8 +16,8 @@ interface TopicListProps {
 const TopicList = ({ topics }: TopicListProps) => {
     const [openTopic, setOpenTopic] = useState<string | null>(null);
 
-    const toggleTopic = (title: string) => {
-        setOpenTopic(openTopic === title ? null : title);
+    const toggleTopic = (id: string) => {
+        setOpenTopic(openTopic === id ? null : id);
     };
 
     return (
@@ -24,14 +25,14 @@ const TopicList = ({ topics }: TopicListProps) => {
             <h2 className="text-xl font-bold mb-4 text-cyan-400">Topics</h2>
             <div className="space-y-2">
                 {topics.map((topic) => (
-                    <div key={topic.title}>
+                    <div key={topic.id}>
                         <button
-                            onClick={() => toggleTopic(topic.title)}
+                            onClick={() => toggleTopic(topic.id)}
                             className="w-full text-left font-semibold p-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition-all"
                         >
                             {topic.title}
                         </button>
-                        {openTopic === topic.title && (
+                        {openTopic === topic.id && (
                             <div className="p-2 mt-1 bg-gray-900 rounded-lg">
                                 {topic.commentaries.map((commentary, index) => (
                                     <p key={index} className="text-gray-300 text-sm">- {commentary}</p>

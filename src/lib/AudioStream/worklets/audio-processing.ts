@@ -19,7 +19,7 @@ class AudioProcessingWorklet extends AudioWorkletProcessor {
 
   // send and clear buffer every 2048 samples, 
   // which at 16khz is about 8 times a second
-  buffer = new Int16Array(2048);
+  buffer = new Int16Array(16384);
 
   // current write index
   bufferWriteIndex = 0;
