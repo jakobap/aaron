@@ -49,117 +49,129 @@ const LiveAgentPage = () => {
     // Refs for mutable state that doesn't trigger re-renders
     const isCapturingRef = useRef(isCapturing);
     isCapturingRef.current = isCapturing;
+    const liveTranscriptRef = useRef(liveTranscript);
+    liveTranscriptRef.current = liveTranscript;
     const sessionRef = useRef<Session | null>(null);
     const audioRecorderRef = useRef<AudioRecorder | null>(null);
     const capturedStreamRef = useRef<MediaStream | null>(null);
     const audioTrackRef = useRef<MediaStreamTrack | null>(null);
+    // const [modelResponseText, setModelResponseText] = useState('');
 
     // UI Refs
     const playbackAudioRef = useRef<HTMLAudioElement | null>(null);
 
     const flushLiveTranscript = useCallback(() => {
-        setLiveTranscript(prevTranscript => {
-            const transcriptToFlush = prevTranscript.trim();
-            if (transcriptToFlush) {
-                const sentences = transcriptToFlush.split(/(?<=[.!?])\s*/).filter(s => s.trim().length > 0);
-                if (sentences.length > 0) {
-                    setTopics(prevTopics => {
-                        const newTopics = [...prevTopics];
-                        if (newTopics.length > 0) {
-                            newTopics[newTopics.length - 1].commentaries.push(...sentences);
-                        } else {
-                            return [{ id: 'initial-topic', title: "General Discussion", commentaries: [...sentences] }];
+        const transcriptToFlush = liveTranscriptRef.current.trim();
+        if (transcriptToFlush) {
+            console.log("Flushing live transcript fragment:", transcriptToFlush);
+            const sentences = transcriptToFlush.split(/(?<=[.!?])\s*/).filter(s => s.trim().length > 0);
+            if (sentences.length > 0) {
+                setTopics(prevTopics => {
+                    if (prevTopics.length === 0) {
+                        return [{ id: 'initial-topic', title: "General Discussion", commentaries: sentences }];
+                    }
+                    // Immutable update
+                    return prevTopics.map((topic, index) => {
+                        if (index === prevTopics.length - 1) {
+                            console.log("Adding flushed sentences to last topic: ", sentences)
+                            return {
+                                ...topic,
+                                commentaries: [...topic.commentaries, ...sentences]
+                            };
                         }
-                        return newTopics;
+                        return topic;
                     });
-                }
+                });
             }
-            return ''; // Reset live transcript
-        });
-    }, []);
+        }
+        setLiveTranscript(''); // Reset live transcript
+    }, [setTopics]);
 
-    const handleModelResponse = (message: LiveServerMessage) => {
-        console.log("Handling Model Response: ", message)
-
-        if (!message.serverContent?.modelTurn?.parts) {
+    const handleCommentary = useCallback((newCommentary: string) => {
+        if (!newCommentary || newCommentary.toLowerCase().trim() === "silence.") {
             return;
         }
 
-        const handleCommentary = (newCommentary: string) => {
-            if (!newCommentary || newCommentary.toLowerCase().trim() === "silence.") {
-                return;
-            }
-            setLiveTranscript(prev => {
-                const updatedTranscript = (prev + newCommentary).trim();
-                const sentences = updatedTranscript.split(/(?<=[.!?])\s*/).filter(s => s.trim().length > 0);
+        const updatedTranscript = (liveTranscriptRef.current + " " + newCommentary).trim();
+        const sentences = updatedTranscript.split(/(?<=[.!?])\s*/).filter(s => s.trim().length > 0);
 
-                if (sentences.length > 1) {
-                    const completeSentences = sentences.slice(0, -1);
-                    const remainingTranscript = sentences.slice(-1)[0] || '';
-                    setTopics(prevTopics => {
-                        const newTopics = [...prevTopics];
-                        if (newTopics.length > 0) {
-                            newTopics[newTopics.length - 1].commentaries.push(...completeSentences);
-                        } else if (completeSentences.length > 0) {
-                            return [{ id: 'initial-topic', title: "General Discussion", commentaries: [...completeSentences] }];
-                        }
-                        return newTopics;
-                    });
+        if (sentences.length > 1) {
+            const completeSentences = sentences.slice(0, -1);
+            const remainingTranscript = sentences.slice(-1)[0] || '';
 
-                    return remainingTranscript;
-                } else {
-                    return updatedTranscript;
+            setTopics(prevTopics => {
+                if (prevTopics.length === 0) {
+                    return completeSentences.length > 0
+                        ? [{ id: 'initial-topic', title: "General Discussion", commentaries: completeSentences }]
+                        : [];
                 }
-            });
-        };
-
-        for (const part of message.serverContent.modelTurn.parts) {
-
-            console.log("Handling Part: ", part)
-
-            if (part.text) {
-                console.log("Handling Commentary: ", part.text)
-                handleCommentary(part.text);
-            }
-
-            if (part.toolCall) {
-                console.log("Handling Tool Call: ", part.toolCall);
-                const functionResponses = [];
-
-                for (const functionCall of part.toolCall.functionCalls) {
-                    console.log("Handling Function Call: ", functionCall);
-                    const { name, args, id } = functionCall;
-                    if (name === 'addNewTopic' && args?.topic) {
-                        const newTopicTitle = args.topic as string;
-                        console.log(`✨ New Topic Identified: ${newTopicTitle}`);
-
-                        flushLiveTranscript();
-
-                        setTopics(prev => {
-                            if (prev.some(t => t.title === newTopicTitle)) {
-                                return prev; // Avoid adding duplicate topics
-                            }
-                            return [...prev, { id: Date.now().toString(), title: newTopicTitle, commentaries: [] }];
-                        });
-
-                        functionResponses.push({
-                            id: id,
-                            name: name,
-                            response: {
-                                result: `Topic "${newTopicTitle}" has been successfully created.`,
-                                scheduling: FunctionResponseScheduling.SILENT
-                            }
-                        });
+                return prevTopics.map((topic, index) => {
+                    if (index === prevTopics.length - 1) {
+                        console.log("Adding complete sentences to last topic: ", completeSentences)
+                        return {
+                            ...topic,
+                            commentaries: [...topic.commentaries, ...completeSentences],
+                        };
                     }
-                }
+                    return topic;
+                });
+            });
 
-                if (sessionRef.current && functionResponses.length > 0) {
-                    console.log('Sending tool response...', functionResponses);
-                    sessionRef.current.sendToolResponse({ functionResponses: functionResponses });
+            setLiveTranscript(remainingTranscript);
+        } else {
+            setLiveTranscript(updatedTranscript);
+        }
+    }, [setTopics]);
+
+    const handleModelResponse = useCallback((message: LiveServerMessage) => {
+        console.log("Handling Model Response: ", message)
+
+        if (message.serverContent?.modelTurn?.parts) {
+            for (const part of message.serverContent.modelTurn.parts) {
+                if (part.text) {
+                    console.log("Handling Commentary: ", part.text)
+                    handleCommentary(part.text);
                 }
             }
         }
-    };
+
+        if (message.toolCall) {
+            console.log("Handling Tool Call: ", message.toolCall);
+            const functionResponses = [];
+
+            for (const functionCall of message.toolCall.functionCalls ?? []) {
+                console.log("Handling Function Call: ", functionCall);
+                const { name, args, id } = functionCall;
+                if (name === 'addNewTopic' && args?.topic) {
+                    const newTopicTitle = args.topic as string;
+                    console.log(`✨ New Topic Identified: ${newTopicTitle}`);
+
+                    flushLiveTranscript();
+
+                    setTopics(prev => {
+                        if (prev.some(t => t.title === newTopicTitle)) {
+                            return prev; // Avoid adding duplicate topics
+                        }
+                        return [...prev, { id: Date.now().toString(), title: newTopicTitle, commentaries: [] }];
+                    });
+
+                    functionResponses.push({
+                        id: id,
+                        name: name,
+                        response: {
+                            result: `Topic "${newTopicTitle}" has been successfully created.`,
+                            scheduling: FunctionResponseScheduling.SILENT
+                        }
+                    });
+                }
+            }
+
+            if (sessionRef.current && functionResponses.length > 0) {
+                console.log('Sending tool response...', functionResponses);
+                sessionRef.current.sendToolResponse({ functionResponses: functionResponses });
+            }
+        }
+    }, [handleCommentary, flushLiveTranscript]);
 
     const stopCapture = useCallback(() => {
         console.log("Stopping capture...");
@@ -263,8 +275,9 @@ const LiveAgentPage = () => {
                         turnCoverage: TurnCoverage.TURN_INCLUDES_ALL_INPUT,
                         automaticActivityDetection: {
                             disabled: false,
-                            endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_HIGH
-                         }
+                            endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_HIGH,
+                            silenceDurationMs: 5
+                        }
                     },
                     tools: [
                         { functionDeclarations: [newTopicFunction] }
@@ -329,6 +342,7 @@ const LiveAgentPage = () => {
     };
 
     useEffect(() => {
+        console.log("StopCapture Effect:", isCapturingRef.current)
         return () => {
             if (isCapturingRef.current) {
                 stopCapture();
@@ -337,6 +351,20 @@ const LiveAgentPage = () => {
     }, [stopCapture]);
 
     const allCommentaries = topics.flatMap(t => t.commentaries);
+
+    useEffect(() => {
+        console.log("Live Transcript: ", liveTranscript)
+    }, [liveTranscript]);
+
+
+    useEffect(() => {
+        console.log("All Commentary: ", allCommentaries)
+    }, [allCommentaries]);
+
+    useEffect(() => {
+        console.log("Topics: ", topics)
+    }, [topics]);
+
 
     return (
         <div className="bg-gray-900 text-white flex items-center justify-center min-h-screen p-4">
@@ -372,9 +400,9 @@ const LiveAgentPage = () => {
                             {allCommentaries.map((text, index) => (
                                 <p key={index}>- {text}</p>
                             ))}
-                            {isCapturing && liveTranscript && (
+                            {/* {isCapturing && liveTranscript && (
                                 <p className="text-gray-400">- {liveTranscript}</p>
-                            )}
+                            )} */}
                             {isCapturing && allCommentaries.length === 0 && !liveTranscript && <p>Waiting for first commentary...</p>}
                             {!isCapturing && allCommentaries.length === 0 && !liveTranscript && <p>Start capture to see live commentary.</p>}
                         </div>
