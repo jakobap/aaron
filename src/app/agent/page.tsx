@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import TopicList from '../components/AgentPanel/TopicList';
 
 interface Topic {
+    id: string;
     title: string;
     commentaries: string[];
 }
@@ -85,7 +86,7 @@ const AgentPage = () => {
                     }
 
                     if (result.newTopic) {
-                        setTopics(prev => [...prev, { title: result.newTopic, commentaries: [] }]);
+                        setTopics(prev => [...prev, { id: Date.now().toString(), title: result.newTopic, commentaries: [] }]);
                     }
                 } else {
                     console.error("API Error:", result.error);
@@ -108,10 +109,8 @@ const AgentPage = () => {
 
             const displayStream = await navigator.mediaDevices.getDisplayMedia({
                 video: true,
-                audio: {
-                    suppressLocalAudioPlayback: false
-                },
-            });
+                audio: true,
+            } as any);
 
             const audioTracks = displayStream.getAudioTracks();
             audioTrackRef.current = audioTracks.length > 0 ? audioTracks[0] : null;
